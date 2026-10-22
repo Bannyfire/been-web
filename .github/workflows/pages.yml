@@ -1,0 +1,48 @@
+name: Pubblica web app
+on:
+  push:
+  workflow_dispatch:
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+concurrency:
+  group: pages
+  cancel-in-progress: true
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Estrai progetto
+        run: unzip -o been-web.zip
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - name: Prepara il sito
+        env:
+          NODE_OPTIONS: --max-old-space-size=6000
+        run: |
+          mkdir -p site data && cd data
+          npm init -y > /dev/null
+          npm install maplibre-gl@4.7.1
+          cp node_modules/maplibre-gl/dist/maplibre-gl.js node_modules/maplibre-gl/dist/maplibre-gl.css ../site/
+          curl -fL https://raw.githubusercontent.com/nvkelso/natural-earth-vector/master/geojson/ne_50m_admin_0_countries.geojson -o in_c.geojson
+          curl -fL https://github.com/wmgeolab/geoBoundaries/raw/main/releaseData/CGAZ/geoBoundariesCGAZ_ADM1.geojson -o in_r.geojson
+          npx --yes mapshaper in_c.geojson -simplify 15% keep-shapes -o c.json format=geojson precision=0.01
+          npx --yes mapshaper in_r.geojson -simplify 3% keep-shapes -o r.json format=geojson precision=0.01
+          node ../prep.mjs
+          cp countries.json regions.json ../site/
+          cd ..
+          cp web/* site/
+          sed -i "s/__V__/${{ github.run_number }}/" site/sw.js
+          ls -lh site
+      - uses: actions/configure-pages@v5
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: site
+      - id: deployment
+        uses: actions/deploy-pages@v4
